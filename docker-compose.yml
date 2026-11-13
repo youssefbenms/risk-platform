@@ -89,8 +89,10 @@ services:
       AIRFLOW__CORE__LOAD_EXAMPLES: "False"
       AIRFLOW__CORE__DEFAULT_TIMEZONE: Europe/Paris
       AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow
-      # Connexion à l'interface : utilisateur admin, mot de passe généré au 1er démarrage (voir le guide)
+      # Connexion à l'interface : utilisateur admin, mot de passe choisi dans .env
       AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_PASSWORDS_FILE: /opt/airflow/passwords.json
+      AIRFLOW_ADMIN_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD}
       PYTHONPATH: /opt/airflow/project
       MODELS_DIR: /opt/airflow/project/models
       DATA_RAW_DIR: /opt/airflow/project/data/raw
@@ -101,8 +103,14 @@ services:
       - ./models:/opt/airflow/project/models
     ports:
       - "8080:8080"
-    # standalone = migration de la base + api-server + scheduler + dag-processor + triggerer
-    command: ["standalone"]
+    # 1) écrit le mot de passe à partir de .env  2) lance standalone
+    #    (migration de la base + api-server + scheduler + dag-processor + triggerer)
+    command:
+      - bash
+      - -c
+      - >-
+        printf '{"admin": "%s"}' "$$AIRFLOW_ADMIN_PASSWORD" > /opt/airflow/passwords.json
+        && exec airflow standalone
     depends_on:
       postgres: { condition: service_healthy }
       mongo: { condition: service_healthy }
