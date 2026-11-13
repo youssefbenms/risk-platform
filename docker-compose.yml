@@ -1,0 +1,136 @@
+# Plateforme complète : bases de données, API, orchestrateur, monitoring.
+# Démarrage :          docker compose up -d --build
+# Lancer un job ETL :  docker compose run --rm jobs python -m src.etl.pipeline
+# Tout arrêter :       docker compose down          (ajoute -v pour effacer les données)
+
+x-app-env: &app-env
+  DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+  MONGO_URL: mongodb://${MONGO_USER}:${MONGO_PASSWORD}@mongo:27017/?authSource=admin
+  MONGO_DB: ${MONGO_DB}
+  API_KEY: ${API_KEY}
+  STOOQ_APIKEY: ${STOOQ_APIKEY:-}
+  TICKERS: ${TICKERS}
+  FX_CURRENCIES: ${FX_CURRENCIES}
+  PRICE_START_DATE: ${PRICE_START_DATE}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      BI_READER_PASSWORD: ${BI_READER_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+    ports:
+      - "5432:5432"          # exposé pour Power BI / VS Code ; à fermer en production
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    volumes:
+      - mongodata:/data/db
+    ports:
+      - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: .
+    image: risk-platform-api:latest
+    restart: unless-stopped
+    environment: *app-env
+    volumes:
+      - ./models:/app/models:ro       # lecture seule : l'API ne modifie jamais le modèle
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+    deploy:
+      resources:
+        limits: { cpus: "1.0", memory: 1g }
+
+  # Conteneur « à la demande » pour les jobs ETL et l'entraînement (même image que l'API)
+  jobs:
+    image: risk-platform-api:latest
+    profiles: ["jobs"]
+    environment: *app-env
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+    command: ["python", "-m", "src.etl.pipeline"]
+
+  airflow:
+    build: ./airflow
+    image: risk-platform-airflow:latest
+    user: "1000:0"
+    restart: unless-stopped
+    environment:
+      <<: *app-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+      AIRFLOW__CORE__DEFAULT_TIMEZONE: Europe/Paris
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/airflow
+      # Connexion à l'interface : utilisateur admin, mot de passe généré au 1er démarrage (voir le guide)
+      AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_USERS: admin:admin
+      PYTHONPATH: /opt/airflow/project
+      MODELS_DIR: /opt/airflow/project/models
+      DATA_RAW_DIR: /opt/airflow/project/data/raw
+    volumes:
+      - ./airflow/dags:/opt/airflow/dags
+      - ./src:/opt/airflow/project/src:ro
+      - ./data:/opt/airflow/project/data
+      - ./models:/opt/airflow/project/models
+    ports:
+      - "8080:8080"
+    # standalone = migration de la base + api-server + scheduler + dag-processor + triggerer
+    command: ["standalone"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      mongo: { condition: service_healthy }
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on: [api]
+
+  grafana:
+    image: grafana/grafana:11.3.1
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      BI_READER_PASSWORD: ${BI_READER_PASSWORD}
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafanadata:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on: [prometheus, postgres]
+
+volumes:
+  pgdata:
+  mongodata:
+  grafanadata:

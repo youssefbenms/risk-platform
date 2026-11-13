@@ -1,0 +1,19 @@
+# Mise à l'échelle automatique : de 2 à 5 pods selon la charge CPU.
+# Nécessite metrics-server (voir le guide, étape Kubernetes).
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: risk-api
+  namespace: risk
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: risk-api
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }

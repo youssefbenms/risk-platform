@@ -1,0 +1,17 @@
+.git
+.github
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.coverage
+.env
+data
+tests
+docs
+k8s
+infra
+airflow
+monitoring

@@ -1,0 +1,14 @@
+# Versions imposées par le fichier de contraintes Airflow 3.4.0 ; ce sont les mêmes
+# que dans requirements.txt (scikit-learn 1.9.1, pandas 3.1.0...) : un modèle entraîné
+# dans Airflow se recharge sans erreur dans l'API.
+scikit-learn
+pandas
+numpy
+SQLAlchemy
+psycopg2-binary
+pymongo
+beautifulsoup4
+lxml
+requests
+python-dotenv
+joblib

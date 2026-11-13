@@ -1,0 +1,18 @@
+# Dépendances de l'application (API + ETL + IA) — versions figées pour la reproductibilité.
+# Alignées sur les contraintes officielles d'Airflow 3.4.0 (Python 3.11) : le même code
+# tourne à l'identique dans l'API, dans les jobs et dans Airflow.
+fastapi==0.162.5
+uvicorn[standard]==0.54.0
+pydantic==2.14.3
+SQLAlchemy==2.0.55
+psycopg2-binary==2.9.13
+pymongo==4.19.0
+pandas==3.1.0
+numpy==2.4.6
+scikit-learn==1.9.1
+joblib==1.6.0
+requests==2.34.2
+beautifulsoup4==4.15.0
+lxml==6.1.3
+python-dotenv==1.2.4
+prometheus-fastapi-instrumentator==8.1.0
